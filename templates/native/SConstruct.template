@@ -1,0 +1,106 @@
+#!/usr/bin/env python
+import os
+import sys
+from methods import print_error
+
+#
+# THIS BUILDS THE ACTUAL SHARED LIB THAT GODOT USES
+# TODO:
+# -all the .template are assumed to be into the /addons folder together with the native_builder.gd script
+# -consume both /addons/lib contents and /addons/templates:
+# --/addons/lib will have the static lib with godot-cpp and other third parties
+# --/addons/templates will have the .gdextension which has to be setup at least once. the custom.py and methods.py can also be generated here into the /native folder
+# -Setup .gdextension with both the libname AND the entry point
+# -FIGURE OUT A BETTER WAY TO MAKE THE ENTRY POINT REGISTRATION. That should also be static -> MACRO ???
+#
+# -REMOVE godot-cpp DEPENDENCY HERE AS IT SHOULD COME WITH THE STATIC LIB
+# -CONFIGURE THIS ENV TO BE WAY SIMPLER THAN THE godot-cpp BASE ENV
+#
+
+
+
+
+# Builds res://native into my_native.so / .dll / .framework, in the same
+# structure as the official godot-cpp-template SConstruct, extended with
+# two things this scaffold needs: linking the prebuilt SDK static
+# library, and a build_number suffix so every build produces a new file
+# name, see native_builder.gd for why.
+
+
+libname = "my_native"
+projectdir = ".."
+
+localEnv = Environment(tools=["default"], PLATFORM="")
+
+customs = ["custom.py"]
+customs = [os.path.abspath(path) for path in customs]
+
+opts = Variables(customs, ARGUMENTS)
+opts.Update(localEnv)
+
+Help(opts.GenerateHelpText(localEnv))
+
+env = localEnv.Clone()
+
+godot_cpp_path = ARGUMENTS.get("godot_cpp_path", "godot-cpp")
+
+if not (os.path.isdir(godot_cpp_path) and os.listdir(godot_cpp_path)):
+    print_error(
+        "godot-cpp not found at '{}'. If it is a submodule, run:\n"
+        "    git submodule update --init --recursive".format(godot_cpp_path)
+    )
+    sys.exit(1)
+
+env = SConscript("{}/SConstruct".format(godot_cpp_path), {"env": env, "customs": customs})
+
+sdk_path = ARGUMENTS.get("sdk_path", "")
+if not sdk_path:
+    print_error("sdk_path argument is required, pass sdk_path=/path/to/my_native_sdk")
+    sys.exit(1)
+
+# build_number comes from native_builder.gd, defaults to 0 for a plain
+# command line build outside the editor plugin.
+build_number = ARGUMENTS.get("build_number", "0")
+
+env.Append(CPPPATH=[os.path.join(sdk_path, "src")])
+
+suffix = env["suffix"].replace(".dev", "").replace(".universal", "")
+
+# The SDK is built with the same SConstruct pattern, under lib/<platform>/,
+# glob instead of reconstructing the exact static lib name so any
+# matching target/arch build already present is picked up automatically.
+static_lib_matches = Glob(os.path.join(sdk_path, "lib", env["platform"], "*{}*{}".format(suffix, env.subst("$LIBSUFFIX"))))
+if not static_lib_matches:
+    print_error(
+        "No static library found under {}/lib/{} matching suffix '{}'.\n"
+        "Build the SDK first with scons in the reusable package.".format(sdk_path, env["platform"], suffix)
+    )
+    sys.exit(1)
+
+env.Append(LIBS=[static_lib_matches[0]])
+
+sources = Glob("*.cpp")
+
+# TODO: IMPROVE THE STANDADIZED LIB NAME (MAKE .gdextension MATCH)
+# TODO: MAYBE CHANGE build_number... MOVE THE BUILD TO A TEMP FOLDER
+lib_filename = "{}{}{}.b{}{}".format(
+    env.subst("$SHLIBPREFIX"), libname, suffix, build_number, env.subst("$SHLIBSUFFIX")
+)
+
+library = env.SharedLibrary(
+    "bin/{}".format(lib_filename),
+    source=sources,
+)
+
+# Installed flat into res://bin, the editor plugin only ever builds for
+# the platform it is currently running on, so there is no need for the
+# per platform subfolders the export focused template uses.
+
+#
+# TODO: FIGURE OUT HOW TO DO THE COMPILE FOR OTHER PLATFORM EXPORTS LATER ON...
+#       -> ALSO PUT ANOTHER FOLDER WITH THE EXTENSION NAME UNDER /bin
+#
+
+copy = env.Install("{}/bin/".format(projectdir), library)
+
+Default(library, copy)

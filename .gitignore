@@ -1,10 +1,14 @@
 # Godot auto generated files
 *.gen.*
 .godot/
+.vs/
+out/*
 
 # Ignore library files but not the gdextension file
 /bin/**
-!project/bin/*.gdextension
+/test-project/native
+/test-project/addons
+
 
 # Ignore scons database
 .sconsign*.dblite
