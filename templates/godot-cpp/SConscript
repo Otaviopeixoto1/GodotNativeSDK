@@ -1,0 +1,15 @@
+from SCons.Script import ARGUMENTS
+from SCons.Tool import Tool
+from SCons.Variables import Variables
+
+Import("env", "customs")
+
+cpp_tool = Tool("godotcpp", toolpath=[env.Dir("tools").srcnode().abspath])
+
+opts = Variables(customs, ARGUMENTS)
+cpp_tool.options(opts, env)
+opts.Update(env)
+Help(opts.GenerateHelpText(env))
+
+cpp_tool.generate(env)
+Return("env")

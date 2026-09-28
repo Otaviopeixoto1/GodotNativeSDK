@@ -1,7 +1,7 @@
 #include "game_object_base.h"
 
 using namespace godot;
-using namespace my_native;
+using namespace GDNativeSDK;
 
 GameObjectBase::GameObjectBase() {
 }

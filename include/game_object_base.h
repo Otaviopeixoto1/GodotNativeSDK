@@ -3,7 +3,7 @@
 #include "api.h"
 #include <godot_cpp/classes/node2d.hpp>
 
-namespace my_native {
+namespace GDNativeSDK {
 
 // Base class for gameplay objects. This class lives in the static library
 // and is fixed. Project specific classes (Player, Enemy, ...) extend it

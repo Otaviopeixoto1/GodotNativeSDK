@@ -7,6 +7,7 @@ out/*
 # Ignore library files but not the gdextension file
 /bin/**
 /test-project/native
+/test-project/bin
 /test-project/addons
 
 

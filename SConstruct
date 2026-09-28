@@ -3,6 +3,7 @@ import os
 import sys
 import json
 
+from SCons.Variables import BoolVariable
 from methods import print_error
 
 sdk_version = 0.1
@@ -24,8 +25,9 @@ customs = ["custom_overrides.py"]
 customs = [os.path.abspath(path) for path in customs]
 
 opts = Variables(customs, ARGUMENTS)
-opts.Update(localEnv)
+opts.Add(BoolVariable("setup", "Run SDK setup", False))
 
+opts.Update(localEnv)
 Help(opts.GenerateHelpText(localEnv))
 
 env = localEnv.Clone()
@@ -106,7 +108,18 @@ installed_templates += env.Install(installdir, template_bin_files)
 include_files = Glob("include/*")
 installed_templates += env.Install("{}/include".format(installdir), include_files)
 
-# Install godot-cpp include headers
+# Install godot-cpp tools and include headers
+installed_templates += env.Install("{}/godot-cpp/tools".format(installdir), Glob("godot-cpp/tools/*.py"))
+installed_templates += env.Install("{}/godot-cpp".format(installdir), Glob("godot-cpp/*.py"))
+installed_templates += env.Install("{}/godot-cpp".format(installdir), File("templates/godot-cpp/SConscript"))
+installed_templates += env.Install("{}/godot-cpp/gdextension".format(installdir), Glob("godot-cpp/gdextension/*.h"))
+
+# Install godot-cpp compiled library (this must be linked in the user SConstruct file)
+godot_cpp_lib = env.File("godot-cpp/bin/libgodot-cpp{}{}".format(env["suffix"], env["LIBSUFFIX"]))
+installed_templates += env.Install("{}/bin/{}/".format(installdir, env["platform"]), godot_cpp_lib)
+
+
+#includes:
 for include_dir in godot_cpp_includes:
     source_root = include_dir.srcnode().abspath
     relative_root = os.path.relpath(source_root, godot_cpp_root)
@@ -133,11 +146,13 @@ for template_file in template_native_files:
         # NEVER overwrite an existing project SConstruct
         if not os.path.exists(sconstruct_output):
             os.makedirs(os.path.dirname(sconstruct_output),exist_ok=True)
-            installed_sconstruct = env.InstallAs(sconstruct_output, template_file) # ---------------------> MAYBE InstallAs WILL NOT WORK ????
+            installed_sconstruct = env.InstallAs(sconstruct_output, template_file)
             installed_templates += installed_sconstruct
         continue
 
-    installed_templates += env.Install("{}/native".format(projectdir), template_file)
+    # Only build all the other native templates if the setup argument is passed as true
+    if env["setup"]:
+        installed_templates += env.Install("{}/native".format(projectdir), template_file)
 
 
 # Generate/update SDK configuration to godot_native_sdk.json
@@ -158,15 +173,24 @@ else:
 sdk_config["version"] = sdk_version
 sdk_config["root"] = "../addons/{}".format(libname)
 sdk_config["include"] = "include"
+sdk_config["library_name"] = libname
 
+
+#
+# TODO: FIX THE JSON TO ALSO SUPPORT MULTIPLE ARCH BUILDS PER PLATFORM !
+#
 
 # Add or update the current platform
+abi_names = ["precision", "threads", "dev_build", "use_static_cpp", "use_mingw"]  # some only exist on some platforms
+options = {n: env[n] for n in abi_names if n in env}
+options["use_hot_reload"] = bool(env.use_hot_reload)
+
 sdk_config.setdefault("platforms", {})
-sdk_config["platforms"][env["platform"]] = {
-    "library_dir": "bin/{}".format(
-        env["platform"]
-    ),
-    "library": libname,
+sdk_config["platforms"].setdefault(env["platform"], {})[env["target"]] = {
+    "library_dir": "bin/{}".format(env["platform"]),
+    "libraries": [lib_filename, os.path.basename(str(godot_cpp_lib))],  #apparently order matters, dependents first
+    "arch": env["arch"],
+    "options": options,
 }
 
 os.makedirs(os.path.dirname(sdk_config_file), exist_ok=True)
