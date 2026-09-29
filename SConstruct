@@ -154,6 +154,12 @@ for template_file in template_native_files:
     if env["setup"]:
         installed_templates += env.Install("{}/native".format(projectdir), template_file)
 
+# Install gdignore
+installed_templates += env.Install(
+    "{}/native/build".format(projectdir),
+    env.File("templates/native/build/.gdignore")
+)
+
 
 # Generate/update SDK configuration to godot_native_sdk.json
 sdk_config_file = "{}/native/godot_native_sdk.json".format(projectdir)

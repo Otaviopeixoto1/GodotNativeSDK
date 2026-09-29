@@ -10,10 +10,6 @@
 using namespace godot;
 
 
-//
-//TODO: Remove this file from here. keep all static init into register_fixed_types.cpp.
-// ALSO MOVE THE ENTRYPOINT METHOD OUT OF THIS TO the DYN LIB
-//
 
 void initialize_gdextension_types(ModuleInitializationLevel p_level)
 {
@@ -32,7 +28,6 @@ void uninitialize_gdextension_types(ModuleInitializationLevel p_level)
 
 extern "C"
 {
-	//TODO: THIS ENTRY POINT HAS TO BE SET IN THE /native/register_types... This is made for the shared lib 
 	GDExtensionBool GDE_EXPORT godot_native_sdk_init(GDExtensionInterfaceGetProcAddress p_get_proc_address, GDExtensionClassLibraryPtr p_library, GDExtensionInitialization *r_initialization)
 	{
 		GDExtensionBinding::InitObject init_obj(p_get_proc_address, p_library, r_initialization);

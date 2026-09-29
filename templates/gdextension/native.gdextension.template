@@ -1,0 +1,57 @@
+[configuration]
+
+entry_symbol = "godot_native_sdk_init"
+compatibility_minimum = "4.5"
+reloadable = true
+
+[libraries]
+; Relative paths ensure that our GDExtension can be placed anywhere in the project directory.
+macos.single.debug = "./macos/lib%%LIBRARY_NAME%%.macos.template_debug.dylib"
+macos.double.debug = "./macos/lib%%LIBRARY_NAME%%.macos.template_debug.double.dylib"
+macos.single.release = "./macos/lib%%LIBRARY_NAME%%.macos.template_release.dylib"
+macos.double.release = "./macos/lib%%LIBRARY_NAME%%.macos.template_release.double.dylib"
+
+ios.arm64.single.debug = "./ios/lib%%LIBRARY_NAME%%.ios.template_debug.arm64.dylib"
+ios.arm64.double.debug = "./ios/lib%%LIBRARY_NAME%%.ios.template_debug.arm64.double.dylib"
+ios.arm64.single.release = "./ios/lib%%LIBRARY_NAME%%.ios.template_release.arm64.dylib"
+ios.arm64.double.release = "./ios/lib%%LIBRARY_NAME%%.ios.template_release.arm64.double.dylib"
+
+windows.x86_32.single.debug = "./windows/%%LIBRARY_NAME%%.windows.template_debug.x86_32.dll"
+windows.x86_32.double.debug = "./windows/%%LIBRARY_NAME%%.windows.template_debug.double.x86_32.dll"
+windows.x86_32.single.release = "./windows/%%LIBRARY_NAME%%.windows.template_release.x86_32.dll"
+windows.x86_32.double.release = "./windows/%%LIBRARY_NAME%%.windows.template_release.double.x86_32.dll"
+
+windows.x86_64.single.debug = "./windows/%%LIBRARY_NAME%%.windows.template_debug.x86_64.dll"
+windows.x86_64.double.debug = "./windows/%%LIBRARY_NAME%%.windows.template_debug.double.x86_64.dll"
+windows.x86_64.single.release = "./windows/%%LIBRARY_NAME%%.windows.template_release.x86_64.dll"
+windows.x86_64.double.release = "./windows/%%LIBRARY_NAME%%.windows.template_release.double.x86_64.dll"
+
+linux.x86_64.single.debug = "./linux/lib%%LIBRARY_NAME%%.linux.template_debug.x86_64.so"
+linux.x86_64.double.debug = "./linux/lib%%LIBRARY_NAME%%.linux.template_debug.double.x86_64.so"
+linux.x86_64.single.release = "./linux/lib%%LIBRARY_NAME%%.linux.template_release.x86_64.so"
+linux.x86_64.double.release = "./linux/lib%%LIBRARY_NAME%%.linux.template_release.double.x86_64.so"
+
+linux.arm64.single.debug = "./linux/lib%%LIBRARY_NAME%%.linux.template_debug.arm64.so"
+linux.arm64.double.debug = "./linux/lib%%LIBRARY_NAME%%.linux.template_debug.double.arm64.so"
+linux.arm64.single.release = "./linux/lib%%LIBRARY_NAME%%.linux.template_release.arm64.so"
+linux.arm64.double.release = "./linux/lib%%LIBRARY_NAME%%.linux.template_release.double.arm64.so"
+
+linux.rv64.single.debug = "./linux/lib%%LIBRARY_NAME%%.linux.template_debug.rv64.so"
+linux.rv64.double.debug = "./linux/lib%%LIBRARY_NAME%%.linux.template_debug.double.rv64.so"
+linux.rv64.single.release = "./linux/lib%%LIBRARY_NAME%%.linux.template_release.rv64.so"
+linux.rv64.double.release = "./linux/lib%%LIBRARY_NAME%%.linux.template_release.double.rv64.so"
+
+android.x86_64.single.debug = "./android/lib%%LIBRARY_NAME%%.android.template_debug.x86_64.so"
+android.x86_64.double.debug = "./android/lib%%LIBRARY_NAME%%.android.template_debug.double.x86_64.so"
+android.x86_64.single.release = "./android/lib%%LIBRARY_NAME%%.android.template_release.x86_64.so"
+android.x86_64.double.release = "./android/lib%%LIBRARY_NAME%%.android.template_release.double.x86_64.so"
+
+android.arm64.single.debug = "./android/lib%%LIBRARY_NAME%%.android.template_debug.arm64.so"
+android.arm64.double.debug = "./android/lib%%LIBRARY_NAME%%.android.template_debug.double.arm64.so"
+android.arm64.single.release = "./android/lib%%LIBRARY_NAME%%.android.template_release.arm64.so"
+android.arm64.double.release = "./android/lib%%LIBRARY_NAME%%.android.template_release.double.arm64.so"
+
+web.wasm32.single.debug = "./web/lib%%LIBRARY_NAME%%.web.template_debug.wasm32.nothreads.wasm"
+web.wasm32.double.debug = "./web/lib%%LIBRARY_NAME%%.web.template_debug.double.wasm32.nothreads.wasm"
+web.wasm32.single.release = "./web/lib%%LIBRARY_NAME%%.web.template_release.wasm32.nothreads.wasm"
+web.wasm32.double.release = "./web/lib%%LIBRARY_NAME%%.web.template_release.double.wasm32.nothreads.wasm"
