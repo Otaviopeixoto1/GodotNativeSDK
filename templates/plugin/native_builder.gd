@@ -1,29 +1,36 @@
 @tool
 extends EditorPlugin
 
-# Path to the gdextension file, relative to the project root.
-const EXTENSION_PATH := "res://my_native.gdextension"
+# Both settings are written into project.godot by gdn init.
+const SDK_PATH_SETTING := "native_builder/sdk_path"
+const PYTHON_SETTING := "native_builder/python"
+
 const NATIVE_DIR := "res://native"
+const SOURCE_DIR := "res://native/src"
 const CLASS_LIST_PATH := "res://native/native_classes.txt"
-const COUNTER_PATH := "res://native/.build_counter"
-const KEEP_OLD_BUILDS := 2
+
+# gdn build exits with this when the SDK needs a variant built and nobody could confirm it.
+const EXIT_CONFIRMATION_REQUIRED := 42
 
 var build_button: Button
 var auto_toggle: CheckButton
 var output_dialog: AcceptDialog
 var output_label: RichTextLabel
+var confirm_dialog: ConfirmationDialog
 var watch_timer: Timer
 
+var build_thread: Thread
 var is_building := false
 var source_mtimes := {}
+var on_confirm := Callable()
 
 
 func _enter_tree() -> void:
-	_ensure_sdk_path_setting()
+	_register_settings()
 
 	build_button = Button.new()
 	build_button.text = "Build Native"
-	build_button.tooltip_text = "Compile res://native with SCons"
+	build_button.tooltip_text = "Build res://native with gdn"
 	build_button.pressed.connect(func(): _start_build(false))
 	add_control_to_container(EditorPlugin.CONTAINER_TOOLBAR, build_button)
 
@@ -41,16 +48,23 @@ func _enter_tree() -> void:
 	output_dialog.add_child(output_label)
 	EditorInterface.get_base_control().add_child(output_dialog)
 
+	confirm_dialog = ConfirmationDialog.new()
+	confirm_dialog.size = Vector2i(700, 400)
+	confirm_dialog.confirmed.connect(func(): on_confirm.call())
+	EditorInterface.get_base_control().add_child(confirm_dialog)
+
 	watch_timer = Timer.new()
 	watch_timer.wait_time = 1.0
 	watch_timer.timeout.connect(_check_for_source_changes)
 	add_child(watch_timer)
 	watch_timer.start()
 
-	source_mtimes = _collect_source_mtimes()
+	source_mtimes = _collect_source_mtimes(SOURCE_DIR)
 
 
 func _exit_tree() -> void:
+	if build_thread != null and build_thread.is_started():
+		build_thread.wait_to_finish()
 	if build_button:
 		remove_control_from_container(EditorPlugin.CONTAINER_TOOLBAR, build_button)
 		build_button.queue_free()
@@ -59,95 +73,119 @@ func _exit_tree() -> void:
 		auto_toggle.queue_free()
 	if output_dialog:
 		output_dialog.queue_free()
+	if confirm_dialog:
+		confirm_dialog.queue_free()
 	if watch_timer:
 		watch_timer.queue_free()
 
 
-func _ensure_sdk_path_setting() -> void:
-	const SDK_PATH_SETTING := "native_builder/sdk_path"
-	if not ProjectSettings.has_setting(SDK_PATH_SETTING):
-		ProjectSettings.set_setting(SDK_PATH_SETTING, "")
-		ProjectSettings.set_initial_value(SDK_PATH_SETTING, "")
-		ProjectSettings.save()
+func _register_settings() -> void:
+	for setting in [SDK_PATH_SETTING, PYTHON_SETTING]:
+		if not ProjectSettings.has_setting(setting):
+			ProjectSettings.set_setting(setting, "")
+		ProjectSettings.set_initial_value(setting, "")
+	ProjectSettings.add_property_info({"name": SDK_PATH_SETTING, "type": TYPE_STRING, "hint": PROPERTY_HINT_GLOBAL_DIR})
+	ProjectSettings.add_property_info({"name": PYTHON_SETTING, "type": TYPE_STRING, "hint": PROPERTY_HINT_GLOBAL_FILE})
 
 
-# Watcher, ported from the idea behind Jenova's Sakura script change
-# trigger mode: poll file modification times instead of relying on a
-# platform specific filesystem watch API, which keeps this portable.
-func _collect_source_mtimes() -> Dictionary:
+# Polls modification times instead of relying on a platform specific
+# filesystem watch API, which keeps this portable.
+func _collect_source_mtimes(path: String) -> Dictionary:
 	var result := {}
-	var dir := DirAccess.open(NATIVE_DIR)
+	var dir := DirAccess.open(path)
 	if dir == null:
 		return result
-	dir.list_dir_begin()
-	var file_name := dir.get_next()
-	while file_name != "":
-		if file_name.ends_with(".cpp") or file_name.ends_with(".hpp"):
-			var full_path := NATIVE_DIR.path_join(file_name)
+	for file_name in dir.get_files():
+		if file_name.ends_with(".cpp") or file_name.ends_with(".h") or file_name.ends_with(".hpp"):
+			var full_path := path.path_join(file_name)
 			result[full_path] = FileAccess.get_modified_time(full_path)
-		file_name = dir.get_next()
-	dir.list_dir_end()
+	for sub_dir in dir.get_directories():
+		result.merge(_collect_source_mtimes(path.path_join(sub_dir)))
 	return result
 
 
 func _check_for_source_changes() -> void:
 	if is_building or not auto_toggle.button_pressed:
 		return
-	var current := _collect_source_mtimes()
+	var current := _collect_source_mtimes(SOURCE_DIR)
 	if current != source_mtimes:
 		source_mtimes = current
 		_start_build(true)
 
 
-func _start_build(is_auto_triggered: bool) -> void:
+# Returns an empty string when the settings are usable, otherwise what to fix.
+func _check_settings() -> String:
+	var sdk_path: String = ProjectSettings.get_setting(SDK_PATH_SETTING, "")
+	var python: String = ProjectSettings.get_setting(PYTHON_SETTING, "")
+	if sdk_path.is_empty() or python.is_empty():
+		return "The SDK is not configured. Run 'gdn init' in the project folder, it sets %s and %s." % [SDK_PATH_SETTING, PYTHON_SETTING]
+	if not DirAccess.dir_exists_absolute(sdk_path):
+		return "SDK folder not found: %s\nCheck %s in Project Settings, or run 'gdn init' again." % [sdk_path, SDK_PATH_SETTING]
+	if not FileAccess.file_exists(python):
+		return "Python not found: %s\nCheck %s in Project Settings, or run 'gdn init' again." % [python, PYTHON_SETTING]
+	return ""
+
+
+func _start_build(is_auto_triggered: bool, assume_yes := false, skip_instance_check := false) -> void:
 	if is_building:
 		push_warning("A build is already running, ignoring the request.")
 		return
 
-	var sdk_path: String = ProjectSettings.get_setting("native_builder/sdk_path", "")
-	if sdk_path.is_empty():
-		_show_output("SDK path is not set. Configure native_builder/sdk_path in Project Settings.")
+	var settings_error := _check_settings()
+	if not settings_error.is_empty():
+		_show_output(settings_error)
 		return
 
-	var live_instances := _find_live_instances()
-	if not live_instances.is_empty() and not is_auto_triggered:
-		# Manual builds ask for confirmation, auto builds proceed since
-		# the developer already opted into the risk by enabling Auto.
-		_show_output(
-			"Found live instances of native classes in the open scene: %s\n" % ", ".join(live_instances) +
-			"Reloading now will destroy and recreate them, unsaved node state will be lost.\n" +
-			"Click Build Native again to proceed anyway.")
-		return
+	# Auto builds proceed, the developer opted into the risk by enabling Auto.
+	if not is_auto_triggered and not skip_instance_check:
+		var live_instances := _find_live_instances()
+		if not live_instances.is_empty():
+			_ask("Found live instances of native classes in the open scene: %s\n\n" % ", ".join(live_instances) +
+				"Reloading destroys and recreates them, unsaved node state will be lost.\n\nBuild anyway?",
+				func(): _start_build(false, assume_yes, true))
+			return
 
 	is_building = true
 	build_button.disabled = true
 	build_button.text = "Building..."
 
-	# No unload before the build. The build always writes a new file
-	# name, so the previous library is never touched on disk and stays
-	# loaded and working for as long as the build takes, including if
-	# it fails.
-	var counter := _next_build_number()
-	var result := _run_scons(sdk_path, counter)
-	var log_text: String = result.log
+	var args := [
+		"-m", "gdn", "build",
+		"--sdk-root", ProjectSettings.get_setting(SDK_PATH_SETTING),
+		"--project", ProjectSettings.globalize_path("res://").trim_suffix("/"),
+	]
+	if assume_yes:
+		args.append("--yes")
 
-	if result.ok:
-		_rewrite_gdextension_library_path(result.lib_path)
-		var reload_ok := _reload_extension()
-		if reload_ok:
-			_cleanup_old_builds(counter)
-			log_text += "\nBuild succeeded, extension reloaded.\n"
-		else:
-			log_text += "\nBuild succeeded but the reload call did not report success.\n"
-			log_text += "Check GDExtensionManager.get_loaded_extensions before relying on this build.\n"
-	else:
-		log_text += "\nBuild failed, previous extension is still loaded and unchanged.\n"
+	# The build can take minutes when the SDK needs a new variant, so keep it off the editor thread.
+	build_thread = Thread.new()
+	build_thread.start(_build_worker.bind(ProjectSettings.get_setting(PYTHON_SETTING), args))
 
-	_show_output(log_text)
 
+func _build_worker(python: String, args: Array) -> void:
+	var output := []
+	var exit_code := OS.execute(python, args, output, true)
+	var log_text := ""
+	for chunk in output:
+		log_text += str(chunk)
+	_build_finished.call_deferred(exit_code, log_text)
+
+
+func _build_finished(exit_code: int, log_text: String) -> void:
+	build_thread.wait_to_finish()
+	is_building = false
 	build_button.disabled = false
 	build_button.text = "Build Native"
-	is_building = false
+
+	if exit_code == 0:
+		_show_output(log_text + "\n" + _reload_extension())
+	elif exit_code == EXIT_CONFIRMATION_REQUIRED:
+		_ask(log_text + "\n\nBuild the SDK variant now? This can take several minutes.",
+			func(): _start_build(false, true, true))
+	elif exit_code == -1:
+		_show_output("Could not start Python: %s" % ProjectSettings.get_setting(PYTHON_SETTING))
+	else:
+		_show_output(log_text + "\nBuild failed (exit code %d). The previously loaded extension is unchanged." % exit_code)
 
 
 # Mirrors Jenova's Active vs Passive script distinction, in a simplified
@@ -182,132 +220,48 @@ func _scan_node(node: Node, watched: Array, found: Dictionary) -> void:
 		_scan_node(child, watched, found)
 
 
-func _next_build_number() -> int:
-	var counter := 0
-	var file := FileAccess.open(COUNTER_PATH, FileAccess.READ)
-	if file != null:
-		counter = file.get_as_text().strip_edges().to_int()
-	counter += 1
-	var out_file := FileAccess.open(COUNTER_PATH, FileAccess.WRITE)
-	if out_file != null:
-		out_file.store_string(str(counter))
-	return counter
+# The library name is set once in native/SConstruct and everything else, including the
+# .gdextension location, follows from it.
+func _library_name() -> String:
+	var file := FileAccess.open(NATIVE_DIR.path_join("SConstruct"), FileAccess.READ)
+	if file == null:
+		return ""
+	var regex := RegEx.create_from_string("(?m)^libname\\s*=\\s*\"([^\"]+)\"")
+	var found := regex.search(file.get_as_text())
+	return found.get_string(1) if found != null else ""
 
 
-func _get_gdextension_manager() -> Object:
-	if not ClassDB.class_exists("GDExtensionManager"):
-		return null
-	return Engine.get_singleton("GDExtensionManager")
+# reload_extension is the API Godot's own GDExtension hot reload is built
+# around. The build installs the library by renaming a new file over the
+# old one, so the loaded copy is never modified while it is in use.
+func _reload_extension() -> String:
+	var library_name := _library_name()
+	if library_name.is_empty():
+		return "Build succeeded, but libname was not found in native/SConstruct so the extension was not reloaded."
+	var path := "res://bin/%s/%s.gdextension" % [library_name, library_name]
+	if not FileAccess.file_exists(path):
+		return "Build succeeded, but %s does not exist." % path
 
-
-# reload_extension is the API Godot's own GDExtension hot reload feature
-# is built around, not a manual unload followed by a separate load.
-# The engine-side reload path can call back into the extension to
-# recreate its native data for objects that already exist, instead of
-# always destroying and recreating them. A manual unload_extension plus
-# load_extension pair skips that path entirely.
-# Whether existing Player/Enemy instances actually survive depends on
-# the godot-cpp version this SDK is built against implementing that
-# recreation callback, this scaffold cannot guarantee that from here,
-# only that it uses the API that makes it possible.
-func _reload_extension() -> bool:
-	var manager := _get_gdextension_manager()
-	if manager == null:
-		return false
-	if manager.is_extension_loaded(EXTENSION_PATH):
-		var status: int = manager.reload_extension(EXTENSION_PATH)
-		return status == 0 # LOAD_STATUS_OK
+	var status: int
+	if GDExtensionManager.is_extension_loaded(path):
+		status = GDExtensionManager.reload_extension(path)
 	else:
-		var status: int = manager.load_extension(EXTENSION_PATH)
-		return status == 0
+		EditorInterface.get_resource_filesystem().scan()
+		status = GDExtensionManager.load_extension(path)
+
+	match status:
+		GDExtensionManager.LOAD_STATUS_OK:
+			return "Build succeeded, extension loaded."
+		GDExtensionManager.LOAD_STATUS_NEEDS_RESTART:
+			return "Build succeeded, but Godot needs a restart to load this extension."
+		_:
+			return "Build succeeded, but the extension did not load (status %d). Check the editor output." % status
 
 
-func _run_scons(sdk_path: String, build_number: int) -> Dictionary:
-	var native_dir := ProjectSettings.globalize_path(NATIVE_DIR)
-
-	var args := [
-		"-C", native_dir,
-		"sdk_path=%s" % sdk_path,
-		"build_number=%d" % build_number,
-	]
-
-	var output := []
-	var exit_code := OS.execute("scons", args, output, true)
-
-	var log_text := ""
-	for line in output:
-		log_text += str(line)
-
-	if exit_code != 0:
-		return {"ok": false, "log": log_text, "lib_path": ""}
-
-	# The plugin knows the naming convention SConstruct uses, this keeps
-	# the two files in agreement without parsing SCons output.
-	var lib_path := ""
-	var dir := DirAccess.open("res://bin")
-	if dir:
-		dir.list_dir_begin()
-		var file_name := dir.get_next()
-		while file_name != "":
-			if file_name.find(".b%d." % build_number) != -1:
-				lib_path = "res://bin".path_join(file_name)
-			file_name = dir.get_next()
-		dir.list_dir_end()
-
-	return {"ok": not lib_path.is_empty(), "log": log_text, "lib_path": lib_path}
-
-
-# Rewrites every platform entry in the gdextension file to point at the
-# freshly built library. This is the same idea cr.h uses when it always
-# loads a newly named copy instead of the original file, applied to
-# Godot's gdextension indirection instead of dlopen directly.
-func _rewrite_gdextension_library_path(new_lib_path: String) -> void:
-	var config := ConfigFile.new()
-	var err := config.load(EXTENSION_PATH)
-	if err != OK:
-		push_error("Could not read %s" % EXTENSION_PATH)
-		return
-
-	var current_platform := _current_platform_key()
-	if config.has_section_key("libraries", current_platform):
-		config.set_value("libraries", current_platform, new_lib_path)
-		config.save(EXTENSION_PATH)
-
-
-func _current_platform_key() -> String:
-	var os_name := OS.get_name().to_lower()
-	# The gdextension file uses short target names in its keys, the
-	# filenames still contain the full template_debug / template_release
-	# name that SCons produces, see SConstruct in native/.
-	var target := "debug" if OS.is_debug_build() else "release"
-	var arch := "x86_64"
-
-	var platform_map := {
-		"linux": "linux",
-		"windows": "windows",
-		"macos": "macos",
-	}
-	var mapped: String = platform_map.get(os_name, os_name)
-	return "%s.%s.%s" % [mapped, target, arch]
-
-
-func _cleanup_old_builds(current_build_number: int) -> void:
-	var dir := DirAccess.open("res://bin")
-	if dir == null:
-		return
-	dir.list_dir_begin()
-	var file_name := dir.get_next()
-	while file_name != "":
-		var marker := file_name.find(".b")
-		if marker != -1:
-			var rest := file_name.substr(marker + 2)
-			var digits := rest.split(".")[0]
-			if digits.is_valid_int():
-				var number := digits.to_int()
-				if current_build_number - number > KEEP_OLD_BUILDS:
-					dir.remove(file_name)
-		file_name = dir.get_next()
-	dir.list_dir_end()
+func _ask(text: String, callback: Callable) -> void:
+	on_confirm = callback
+	confirm_dialog.dialog_text = text
+	confirm_dialog.popup_centered()
 
 
 func _show_output(text: String) -> void:

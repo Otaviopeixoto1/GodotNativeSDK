@@ -16,7 +16,8 @@ from methods import print_error, print_warning
 
 EnsureSConsVersion(4, 0)
 
-libname = "MyNativeLib"
+# Set by gdn init, change it here and in the folder names under bin/ to rename the library.
+libname = "@LIBRARY_NAME@"
 
 AddOption(
     "--gdn-resolve",
@@ -145,7 +146,7 @@ installed_library = env.Command(
     Action(scons_support.atomic_install, "Installing $TARGET"),
 )
 # env.Precious(target) tells SCons not to delete the target before rebuilding it ! Important for hot reload
-env.Precious(installed_library) 
+env.Precious(installed_library)
 
 
 def write_gdextension_file(target, source, env):
