@@ -28,4 +28,4 @@ private:
 	int health = 100;
 };
 
-} // namespace my_native
+}

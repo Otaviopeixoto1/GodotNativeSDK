@@ -6,6 +6,7 @@
 #include <godot_cpp/godot.hpp>
 
 #include "example_class.h"
+#include "register_fixed_types.h"
 
 using namespace godot;
 
@@ -16,6 +17,9 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
 		return;
 	}
+	// The SDK classes must be registered before project classes that extend them.
+	GDNativeSDK::register_fixed_types();
+
 	GDREGISTER_CLASS(ExampleClass);
 }
 
@@ -24,6 +28,8 @@ void uninitialize_gdextension_types(ModuleInitializationLevel p_level)
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
 		return;
 	}
+
+	GDNativeSDK::unregister_fixed_types();
 }
 
 extern "C"

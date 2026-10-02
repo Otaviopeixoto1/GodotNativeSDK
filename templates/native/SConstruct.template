@@ -1,157 +1,170 @@
 #!/usr/bin/env python
+import json
 import os
 import sys
-import json
 
-from SCons.Tool import Tool
-from SCons.Variables import Variables
+from methods import print_error, print_warning
 
-from methods import print_error
-
-
-# Builds res://native into my_native.so / .dll / .framework, in the same
-# structure as the official godot-cpp-template SConstruct, extended with
-# two things this scaffold needs: linking the prebuilt SDK static
-# library, and a build_number suffix so every build produces a new file
-# name, see native_builder.gd for why.
+#
+# This SConstruct Builds this project's native code into the shared library Godot loads, and writes the
+# .gdextension file next to it.
+#
+# IMPORTANT: Never run this through the raw SCons CLI. Run it through 'gdn build', which also makes sure the SDK has
+# the variant this build needs. pass overrides as key=value. Every build option comes from the godot-cpp tool inside the SDK,
+#
 
 
+EnsureSConsVersion(4, 0)
 
 libname = "MyNativeLib"
 
-#
-#
-# TODO: Move config json and this SConstruct to the "assets/GodotNativeSDK": There should be a simple json with some build configs in the user side ("/native" folder)
-#
-#
-configpath = "./godot_native_sdk.json"
-
-
-# Load SDK config file
-if not os.path.isfile(configpath):
-    print_error("SDK configuration not found: {}".format(configpath))
-    sys.exit(1)
-
-with open(configpath, "r") as f:
-    sdk_config = json.load(f)
-
-sdk_root = os.path.normpath(sdk_config["root"])
-
-#
-# Build Arguments
-#
-
-target = ARGUMENTS.get("target", "template_debug")
-platform = ARGUMENTS.get("platform", "")
-if not platform:
-    print_error("MISSING ARGUMENTS. 'platform' was not specified.")
-    sys.exit(1)
-
-
-#
-# Platform configuration
-#
-
-platform_config = sdk_config.get("platforms", {}).get(platform, {}).get(target)
-if platform_config is None:
-    print_error("No SDK configuration for platform '{}' and target '{}'.".format(platform, target))
-    print_error("Available platforms:")
-
-    for name in sdk_config.get("platforms", {}):
-        print_error("  {}".format(name))
-
-    sys.exit(1)
-
-#
-# Build env
-#
-
-env = Environment(tools=["default"], PLATFORM="")
-
-env["platform"] = platform
-env["arch"] = platform_config["arch"]
-env["target"] = target
-
-for key, value in platform_config.get("options", {}).items():
-    env[key] = value
-
-customs = [os.path.abspath("custom_overrides.py")]
-env = SConscript("{}/godot-cpp/SConscript".format(sdk_root), exports={"env": env, "customs": customs})
-
-for key, expected in platform_config.get("options", {}).items():
-    if env.get(key) != expected:
-        print_error("'{}' is {} here but the SDK was built with {}".format(key, env.get(key), expected))
-        sys.exit(1)
-
-
-#
-# Add Include files
-#
-
-env.Append(CPPPATH=[
-		"{}/{}".format(sdk_root, sdk_config["include"]),
-		"{}/godot-cpp/include".format(sdk_root),
-		"{}/godot-cpp/gen/include".format(sdk_root)
-    ]
+AddOption(
+    "--gdn-resolve",
+    dest="gdn_resolve",
+    type="string",
+    nargs=1,
+    action="store",
+    metavar="FILE",
+    help="Write the resolved build configuration to FILE as JSON and exit without building.",
 )
 
-#
-# Link SDK libraries
-#
-lib_dir = os.path.join(sdk_root, platform_config["library_dir"])
-for name in platform_config["libraries"]:
-    env.Append(LIBS=[env.File(os.path.join(lib_dir, name))])
-env.Append(CPPPATH=["{}/godot-cpp/gdextension".format(sdk_root)])
+localEnv = Environment(tools=["default"], PLATFORM="")
+localEnv.PrependENVPath("PATH", os.getenv("PATH"))
 
-# TODO: Does Scons add the prefixes and suffixes or find the libraries just from a the parent dir ????
-#sdk_library_dir = "{}/{}".format(sdk_root, platform_config["library_dir"])
-#env.Append(LIBPATH=[sdk_library_dir])
-#env.Append(LIBS=[sdk_config["library_name"]])
+variables = Variables(None, ARGUMENTS)
+
+sdk_path = ARGUMENTS.get("sdk_path")
+if not sdk_path:
+    print_error("sdk_path was not set. Run 'gdn build', or pass sdk_path=/path/to/GodotNativeSDK")
+    Exit(1)
+
+sdk_path = os.path.abspath(sdk_path)
+godot_cpp_dir = os.path.join(sdk_path, "godot-cpp")
+if not os.path.isdir(godot_cpp_dir):
+    print_error("godot-cpp not found in the SDK: {}".format(godot_cpp_dir))
+    Exit(1)
+
+sys.path.insert(0, sdk_path)
+from gdn import manifest as gdn_manifest
+from gdn import scons_support
 
 #
-# Build 
+# Environment: the godot-cpp tool decides every default
 #
 
-env.Append(CPPPATH=["./"])
-sources = Glob("*.cpp")
+env = localEnv
+with scons_support.godot_cpp_directory(env, godot_cpp_dir):
+    cpp_tool = scons_support.load_godot_cpp_tool(godot_cpp_dir)
+    cpp_tool.options(variables, env)
 
-suffix = ".{}.{}.{}".format(platform, target, platform_config["arch"])
-lib_filename = "{}{}{}{}".format(env.subst("$SHLIBPREFIX"), libname, suffix, env.subst("$SHLIBSUFFIX"))
+    # The options that define a build are godot-cpp's only. sdk_path is this script's own
+    # argument, declared after the snapshot so it never takes part in comparing variants.
+    declared_options = scons_support.unique(variables.keys())
+    variables.Add("sdk_path", "Path to the GodotNativeSDK root", None)
+
+    variables.Update(env)
+    Help(variables.GenerateHelpText(env))
+
+    unknown = variables.UnknownVariables()
+    if unknown:
+        print_error("Unknown build option(s): {}. Run 'gdn options' to list the valid ones.".format(", ".join(sorted(unknown))))
+        Exit(2)
+
+    try:
+        cpp_tool.generate(env)
+    except Exception as error:
+        print_error("godot-cpp could not set up the toolchain for platform '{}': {}".format(env.get("platform"), error))
+        Exit(gdn_manifest.EXIT_TOOLCHAIN)
+
+missing = scons_support.missing_compiler(env)
+if missing and not GetOption("help"):
+    print_error("The compiler '{}' for platform '{}' was not found on PATH.".format(missing, env["platform"]))
+    Exit(gdn_manifest.EXIT_TOOLCHAIN)
+
+resolved = scons_support.resolved_config(env, declared_options)
+
+resolve_file = GetOption("gdn_resolve")
+if resolve_file:
+    with open(resolve_file, "w") as f:
+        json.dump(resolved, f, indent=2, sort_keys=True)
+    Exit(0)
+
+if GetOption("help"):
+    Return()
+
+#
+# Find SDK variant to link against
+#
+
+built = gdn_manifest.load(gdn_manifest.manifest_path(sdk_path, resolved["platform"], resolved["suffix"]))
+if built is None or not gdn_manifest.libraries_present(sdk_path, built):
+    print_error("The SDK has no build for: {}".format(gdn_manifest.label(resolved)))
+    print("Build it with 'gdn sdk build', or run 'gdn build' which offers to.")
+    Exit(gdn_manifest.EXIT_VARIANT_MISSING)
+
+differences = gdn_manifest.differences(resolved, built)
+if differences:
+    print_error("The SDK variant for this suffix was built with different settings:")
+    for key, pair in differences.items():
+        print("  " + gdn_manifest.describe_difference(key, pair))
+    Exit(gdn_manifest.EXIT_VARIANT_MISMATCH)
+
+if resolved["compiler"] != built.get("compiler"):
+    print_warning("The SDK was built with a different compiler than this build uses: {} vs {}".format(built.get("compiler"), resolved["compiler"]))
+
+env.Append(CPPPATH=[os.path.join(sdk_path, path) for path in built["include_dirs"]])
+for library_path in built["libraries"]:
+    env.Append(LIBS=[env.File(os.path.join(sdk_path, library_path))])
+
+#
+# Build
+#
+
+env.Append(CPPPATH=[os.path.abspath("."), os.path.abspath("src")])
+
+# Compile into build/obj (ignored folder) instead of beside the sources. This solves the windows issue where godot tried to import .obj build artifacts
+env.VariantDir("build/obj", "src", duplicate=False)
+sources = Glob("build/obj/*.cpp")
+
+# .dev and .universal do not affect compatibility, and the .gdextension template names files without them.
+final_suffix = env["suffix"].replace(".dev", "").replace(".universal", "")
+lib_filename = "{}{}{}{}".format(env.subst("$SHLIBPREFIX"), libname, final_suffix, env.subst("$SHLIBSUFFIX"))
 
 library = env.SharedLibrary(
-    "./build/{}/{}/{}".format(libname, platform, lib_filename),
+    "build/{}/{}/{}".format(libname, env["platform"], lib_filename),
     source=sources,
 )
 
 #
-# Install 
+# Install: stage in build/, then replace the installed file in one step
 #
 
-# Install library
-installed_library = env.Install(
-    "../bin/{}/{}".format(libname, platform),
+installed_library = env.Command(
+    "../bin/{}/{}/{}".format(libname, env["platform"], lib_filename),
     library,
+    Action(scons_support.atomic_install, "Installing $TARGET"),
 )
+# env.Precious(target) tells SCons not to delete the target before rebuilding it ! Important for hot reload
+env.Precious(installed_library) 
 
-# Install .gdextension file
 
-def _write_gdextension_file(target, source, env):
+def write_gdextension_file(target, source, env):
     with open(str(source[0]), "r") as f:
         content = f.read()
-    content = content.replace("%%LIBRARY_NAME%%", libname)
-    with open(str(target[0]), "w") as f:
-        f.write(content)
+    scons_support.write_text_if_changed(str(target[0]), content.replace("%%LIBRARY_NAME%%", libname))
+    return 0
 
-gdextension_template = os.path.join(sdk_root, "native.gdextension.template")
+
+gdextension_template = os.path.join(sdk_path, "templates", "gdextension", "native.gdextension.template")
 if not os.path.isfile(gdextension_template):
     print_error("gdextension template not found: {}".format(gdextension_template))
-    sys.exit(1)
+    Exit(1)
 
-gdextension_output = "../bin/{}/{}.gdextension".format(libname, libname)
 gdextension_file = env.Command(
-    target=gdextension_output,
-    source=gdextension_template,
-    action=_write_gdextension_file,
+    "../bin/{}/{}.gdextension".format(libname, libname),
+    gdextension_template,
+    Action(write_gdextension_file, "Writing $TARGET"),
 )
+env.Precious(gdextension_file)
 
-Default(library, installed_library, gdextension_file)
+Default(installed_library, gdextension_file)
