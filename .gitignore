@@ -4,6 +4,9 @@
 .vs/
 out/*
 
+#
+*.egg-info/
+
 # Ignore library files but not the gdextension file
 /bin/**
 /test-project/native
