@@ -6,6 +6,7 @@
 #include <godot_cpp/godot.hpp>
 
 #include "example_class.h"
+#include "systems.h"
 #include "register_fixed_types.h"
 
 using namespace godot;
@@ -22,6 +23,7 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
 	}
 
 	GDREGISTER_CLASS(ExampleClass);
+	//use GDNativeSDK::ECS::register_component<T>(); to register all components
 }
 
 void uninitialize_gdextension_types(ModuleInitializationLevel p_level)
