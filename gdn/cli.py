@@ -23,14 +23,16 @@ import tempfile
 from pathlib import Path
  
 from . import manifest as mf
- 
+
+# Exit Codes
 EXIT_OK = 0
 EXIT_ERROR = 1
 EXIT_USAGE = 2
 EXIT_CONFIRMATION_REQUIRED = 42
- 
+
+# Argument parse regex
 OVERRIDE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
- 
+
 DEFAULT_LIBRARY_NAME = "MyNativeLib"
 LIBRARY_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
  

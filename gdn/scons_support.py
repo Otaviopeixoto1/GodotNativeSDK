@@ -5,6 +5,7 @@ SCons helpers shared by the SDK SConstruct and the project SConstruct. Import fr
 import contextlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,10 @@ from SCons.Tool import Tool
 from SCons.Variables import Variables
 
 from . import manifest as mf
+
+# godot-cpp hardcodes C++17. EnTT needs C++20, so the SDK and every project needs to replace that flag.
+CXX_STANDARD = "20"
+STANDARD_FLAG = re.compile(r"^(-std=(?:c|gnu)\+\+|/std:c\+\+)(\w+)$")
 
 
 @contextlib.contextmanager
@@ -59,6 +64,26 @@ def probe_declared_options(env, godot_cpp_dir, customs):
         variables.Update(probe_env)
     return unique(variables.keys()), variables.UnknownVariables()
 
+def use_cxx_standard(env, standard=CXX_STANDARD):
+    """Replace godot-cpp's C++ standard flag in place, or add one when it set none."""
+    flags = [str(flag) for flag in env.get("CXXFLAGS", [])]
+    found = False
+    for i, flag in enumerate(flags):
+        match = STANDARD_FLAG.match(flag)
+        if match:
+            flags[i] = match.group(1) + standard
+            found = True
+    if not found:
+        flags.append(("/std:c++" if env.get("is_msvc", False) else "-std=c++") + standard)
+    env["CXXFLAGS"] = flags
+
+
+def cxx_standard(env):
+    for flag in reversed([str(flag) for flag in env.get("CXXFLAGS", [])]):
+        match = STANDARD_FLAG.match(flag)
+        if match:
+            return match.group(2)
+    return None
 
 def _plain(value):
     if value is None or isinstance(value, (bool, int, float, str)):
@@ -107,13 +132,17 @@ def missing_compiler(env):
 
 
 def resolved_config(env, keys):
+    # The standard is not a godot-cpp option, but it must match like one, so it is compared with them.
+    options = effective_options(env, keys)
+    options["cxx_standard"] = cxx_standard(env)
+
     return {
         "schema": mf.SCHEMA,
         "platform": env["platform"],
         "target": env["target"],
         "arch": env["arch"],
         "suffix": env["suffix"],
-        "options": effective_options(env, keys),
+        "options": options,
         "defines": normalized_defines(env),
         "compiler": compiler_info(env),
     }

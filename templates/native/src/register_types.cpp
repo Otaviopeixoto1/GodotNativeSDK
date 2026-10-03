@@ -14,22 +14,23 @@ using namespace godot;
 
 void initialize_gdextension_types(ModuleInitializationLevel p_level)
 {
+	// The SDK classes must be registered before project classes that extend them.
+	GDNativeSDK::register_fixed_types(p_level);
+
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
 		return;
 	}
-	// The SDK classes must be registered before project classes that extend them.
-	GDNativeSDK::register_fixed_types();
 
 	GDREGISTER_CLASS(ExampleClass);
 }
 
 void uninitialize_gdextension_types(ModuleInitializationLevel p_level)
 {
-	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
-		return;
+	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
+		// Project teardown goes here, before the SDK's.
 	}
-
-	GDNativeSDK::unregister_fixed_types();
+ 
+	GDNativeSDK::unregister_fixed_types(p_level);
 }
 
 extern "C"

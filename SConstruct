@@ -44,6 +44,9 @@ if unknown:
 # godot-cpp SConstruct resolves every default including: platform, arch and target. This will also build the godot-cpp static lib.
 env = SConscript("godot-cpp/SConstruct", {"env": localEnv, "customs": customs})
 
+# godot-cpp tries to compile as C++17 and EnTT needs C++20, so replace the flag in the environment it builds with.
+scons_support.use_cxx_standard(env)
+
 missing = scons_support.missing_compiler(env)
 if missing and not GetOption("help"):
     print_error("The compiler '{}' for platform '{}' was not found on PATH.".format(missing, env["platform"]))
@@ -53,7 +56,7 @@ env.Append(CPPPATH=["include/"])
 sources = Glob("src/*.cpp")
 
 # Third party sources, each assumed to be entirely in its own subfolder under thirdparty/.
-# TODO: implement recursive glob to really get all files...
+env.Append(CPPPATH=["thirdparty/"])
 sources += Glob("thirdparty/*/*.cpp")
 for entry in Glob("thirdparty/*"):  # TODO: only add folders that hold headers
     env.Append(CPPPATH=[str(entry)])
