@@ -108,9 +108,9 @@ struct Column<godot::Color> {
 // Retuns Component pointer behind a component proxy instance, nullptr when it cannot be resolved.
 void *proxy_data(GDExtensionClassInstancePtr instance);
 
-// Returns Component pointer of one column of a chunk instance, nullptr when the chunk is stale or the
-// column is read only and a write was requested. Defined in system.cpp
-void *const *chunk_column(GDExtensionClassInstancePtr instance, void *userdata, std::size_t &count, bool write);
+// Returns an array of Component pointers inside a chunk (system) instance, nullptr when the chunk is stale or the
+// Component is read only and a write was requested.
+void *const *chunk_component_ptrs(GDExtensionClassInstancePtr instance, void *userdata, std::size_t &count, bool write);
 
 
 template <typename>
@@ -207,7 +207,7 @@ struct FieldThunks {
 	}
 	static void column_get_call(void *ud, GDExtensionClassInstancePtr inst, const GDExtensionConstVariantPtr *, GDExtensionInt, GDExtensionVariantPtr r_ret, GDExtensionCallError *err) {
 		std::size_t n = 0;
-		void *const *p = chunk_column(inst, ud, n, false);
+		void *const *p = chunk_component_ptrs(inst, ud, n, false);
 		copy_out(godot::Variant(p ? pack(p, n) : Col()), r_ret);
 		ok(err);
 	}
@@ -218,19 +218,19 @@ struct FieldThunks {
 			return;
 		}
 		std::size_t n = 0;
-		if (void *const *p = chunk_column(inst, ud, n, true)) {
+		if (void *const *p = chunk_component_ptrs(inst, ud, n, true)) {
 			unpack(p, n, static_cast<Col>(*reinterpret_cast<const godot::Variant *>(args[0])));
 		}
 		ok(err);
 	}
 	static void column_get_ptr(void *ud, GDExtensionClassInstancePtr inst, const GDExtensionConstTypePtr *, GDExtensionTypePtr r_ret) {
 		std::size_t n = 0;
-		void *const *p = chunk_column(inst, ud, n, false);
+		void *const *p = chunk_component_ptrs(inst, ud, n, false);
 		godot::PtrToArg<Col>::encode(p ? pack(p, n) : Col(), r_ret);
 	}
 	static void column_set_ptr(void *ud, GDExtensionClassInstancePtr inst, const GDExtensionConstTypePtr *args, GDExtensionTypePtr) {
 		std::size_t n = 0;
-		if (void *const *p = chunk_column(inst, ud, n, true)) {
+		if (void *const *p = chunk_component_ptrs(inst, ud, n, true)) {
 			unpack(p, n, godot::PtrToArg<Col>::convert(args[0]));
 		}
 	}
@@ -261,7 +261,7 @@ struct reflect {
 	template <auto Member>
 	reflect &field(const char *name) {
 		static_assert(std::is_same_v<typename member_traits<decltype(Member)>::klass, T>, "field belongs to another type");
-		// Add the FieldOps to entt::meta_factory as "custom" data:
+		// Add the FieldOps to entt::meta_factory as "custom" data for the Component Metadata:
 		factory.template data<Member>(name).template custom<FieldOps>(FieldThunks<Member>::make());
 		return *this;
 	}
@@ -274,7 +274,5 @@ void bind_value_properties(const godot::StringName &godot_class, const entt::met
 
 // One typed packed array property per reflected field, on a chunk class, named <prefix>_<field>.
 void bind_column_properties(const godot::StringName &chunk_class, const entt::meta_type &type, const godot::String &prefix, std::size_t slot, bool writable);
-
-
 
 } // namespace GDNativeSDK::ECS

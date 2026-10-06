@@ -24,6 +24,7 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
 
 	GDREGISTER_CLASS(ExampleClass);
 	//use GDNativeSDK::ECS::register_component<T>(); to register all components
+	//THEN use GDNativeSDK::ECS::register_system<T>(); to register all systems
 }
 
 void uninitialize_gdextension_types(ModuleInitializationLevel p_level)

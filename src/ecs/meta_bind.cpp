@@ -98,7 +98,7 @@ void bind_value_properties(const godot::StringName &godot_class, const entt::met
 }
 
 void bind_column_properties(const godot::StringName &chunk_class, const entt::meta_type &type, const godot::String &prefix, std::size_t slot, bool writable) {
-	// The slot travels as the method's user data, so one set of functions serves every system.
+	// The slot travels as the method user data, so one set of functions serves every system.
 	void *userdata = reinterpret_cast<void *>(static_cast<uintptr_t>(slot));
 	for (auto [id, data] : type.data()) {
 		const FieldOps *ops = data.custom();
@@ -119,11 +119,11 @@ void *proxy_data(GDExtensionClassInstancePtr instance) {
 	return static_cast<ECSComponent *>(reinterpret_cast<godot::Wrapped *>(instance))->data();
 }
 
-void *const *chunk_column(GDExtensionClassInstancePtr instance, void *userdata, std::size_t &count, bool write) {
+void *const *chunk_component_ptrs(GDExtensionClassInstancePtr instance, void *userdata, std::size_t &count, bool write) {
 	ECSChunk *chunk = static_cast<ECSChunk *>(reinterpret_cast<godot::Wrapped *>(instance));
-	void *const *column = chunk->column(static_cast<std::size_t>(reinterpret_cast<uintptr_t>(userdata)), write);
-	count = column ? chunk->count : 0;
-	return column;
+	void *const *compPtrs = chunk->component_ptrs(static_cast<std::size_t>(reinterpret_cast<uintptr_t>(userdata)), write);
+	count = compPtrs ? chunk->count : 0;
+	return compPtrs;
 }
 
 } // namespace GDNativeSDK::ECS

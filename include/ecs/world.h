@@ -15,8 +15,19 @@
 //
 // Macros
 //
+// GDN_COMPONENT defines a default-constructable proxy Component class based on an existing struct.
+// The proxy class is used to bind to GDScript and provide basic accessor logic to its *Variant-compatible*
+// fields. A component_traits struct is also defined for the give struct in order to link the runtime reflection
+// code (entt::meta).
+// 
 // Example Usage:
-//  GDN_COMPONENT(CircleGeometry, GDN_FIELD(center) GDN_FIELD(radius))
+//		struct CircleGeometry {
+//			Vector2 center;
+//			float radius;
+//		};
+//		GDN_COMPONENT(CircleGeometry, GDN_FIELD(center) GDN_FIELD(radius))
+
+
 
 // Declares the proxy class used for binding an existing struct component to GDScript.
 // IMPORTANT: The struct must be declared at global scope.
@@ -62,7 +73,7 @@ struct component_traits;
 
 class ECSComponent;
 
-// What the world needs to know about a component without knowing its type.
+// A Type-Erased Component that gets persistently stored
 struct ComponentDesc {
 	entt::id_type id = 0;
 	godot::StringName godot_class;
@@ -71,14 +82,14 @@ struct ComponentDesc {
 	// Function called when copying a component's content
 	void (*emplace_copy)(entt::registry &, entt::entity, const void *src) = nullptr;
 
-	//Function called for initializing entt storage for the component
+	//Function called for initializing entt storage for the component. This guarantees that storages are never empty
 	void (*touch)(entt::registry &) = nullptr;
 
 	//Function called for creating an instance of the proxy class (GDScript side representation of the component)
 	godot::Ref<ECSComponent> (*make_proxy)() = nullptr;
 };
 
-// Component descriptor registration to the persistent storage
+// Component descriptor registration and access to the persistent storage
 void add_component_desc(const ComponentDesc &desc);
 const ComponentDesc *find_component(entt::id_type id);
 const ComponentDesc *find_component(const godot::StringName &godot_class);
@@ -141,6 +152,9 @@ protected:
 };
 
 
+//
+// A class used to bridge the ECS implementation between the native and the GDScript code.
+//
 class ECSWorld : public godot::RefCounted {
 	GDCLASS(ECSWorld, godot::RefCounted)
 
@@ -151,13 +165,30 @@ public:
 
 	ECSWorld();
 
+	// Creates an entity managed by this ECSWorld
 	int64_t create();
 	void destroy(int64_t entity);
 	bool is_alive(int64_t entity) const;
+
+	//
+	// Component accessors. These provide an API for the GDSCript side
+	// GDScript usage: var live := world.component(e, CircleGeometry) as CircleGeometry
+	//
+	// Example Usage:
+	//		var c := CircleGeometry.new()
+	//		c.radius = 2.0 world.add(e, c)
+	//
+
 	void add(int64_t entity, const godot::Ref<ECSComponent> &value);
 	void remove(int64_t entity, const godot::Variant &component);
 	bool has(int64_t entity, const godot::Variant &component);
+
+	// GDScript API for retrieving a component associated with an entity through a class token. In this case it can be a live Component instance, a Component class, instance or string name.
+	// GDScript usage: var live := world.component(e, CircleGeometry) as CircleGeometry
 	godot::Ref<ECSComponent> component(int64_t entity, const godot::Variant &component);
+
+	// GDScript API for retrieving a system through a class token. In this case it can be a live System instance, a system class, instance or string name.
+	// GDScript usage: var move := world.system(MoveSystem) as MoveSystem
 	godot::Ref<ECSSystem> system(const godot::Variant &system);
 
 	static entt::entity to_entity(int64_t e) { return entt::entity(static_cast<uint32_t>(e)); }

@@ -9,6 +9,7 @@ namespace GDNativeSDK::ECS {
 
 namespace {
 // Persistent storage for component descriptors
+// TODO: Convert to std::unordered_map !
 std::deque<ComponentDesc> components;
 } // namespace
 
@@ -46,7 +47,7 @@ godot::StringName resolve_class_token(const godot::Variant &token) {
 		case godot::Variant::OBJECT: {
 			godot::Object *object = token;
 			ERR_FAIL_NULL_V_MSG(object, godot::StringName(), "null component or system");
-			if (godot::Object::cast_to<ECSComponent>(object) || godot::Object::cast_to<EcsSystem>(object)) {
+			if (godot::Object::cast_to<ECSComponent>(object) || godot::Object::cast_to<ECSSystem>(object)) {
 				return object->get_class();
 			}
 			// The class itself, as in world.system(Move): it only offers new(), so ask an instance.
@@ -141,10 +142,10 @@ godot::Ref<ECSComponent> ECSWorld::component(int64_t entity, const godot::Varian
 	return proxy;
 }
 
-godot::Ref<EcsSystem> ECSWorld::system(const godot::Variant &system) {
-	const SystemOps *ops = find_system(resolve_class_token(system));
-	ERR_FAIL_NULL_V_MSG(ops, godot::Ref<EcsSystem>(), "system is not registered");
-	godot::Ref<EcsSystem> handle = ops->make_handle();
+godot::Ref<ECSSystem> ECSWorld::system(const godot::Variant &system) {
+	const SystemDescriptor *ops = find_system(resolve_class_token(system));
+	ERR_FAIL_NULL_V_MSG(ops, godot::Ref<ECSSystem>(), "system is not registered");
+	godot::Ref<ECSSystem> handle = ops->make_handle();
 	handle->world = godot::Ref<ECSWorld>(this);
 	handle->ops = ops;
 	return handle;
@@ -169,4 +170,4 @@ void register_ecs_types() {
 	GDREGISTER_CLASS(ECSWorld);
 }
 
-} // namespace gdn
+} // namespace GDNativeSDK::ECS

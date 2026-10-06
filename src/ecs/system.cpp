@@ -9,18 +9,21 @@
 namespace GDNativeSDK::ECS {
 
 namespace {
-// Persistent storage for system descriptors
-std::deque<SystemOps> systems;
+// Persistent storage for system descriptors. This is searched every time when querying world for Systems with the GDScript API
+// TODO: Convert to std::unordered_map !
+std::deque<SystemDescriptor> systems;
 } // namespace
 
 
 
-void add_system_ops(const SystemOps &ops) {
+void add_system_ops(const SystemDescriptor &ops) {
+	// TODO: Use a std::map from entt::id_type to the SystemDescriptor instead of std::dequeue
 	systems.push_back(ops);
 }
 
-const SystemOps *find_system(const godot::StringName &godot_class) {
-	for (const SystemOps &s : systems) {
+const SystemDescriptor *find_system(const godot::StringName &godot_class) {
+	// TODO: Use a std::map from entt::id_type to the SystemDescriptor instead of std::dequeue
+	for (const SystemDescriptor &s : systems) {
 		if (s.godot_class == godot_class) {
 			return &s;
 		}
@@ -39,17 +42,17 @@ godot::PackedInt64Array ECSChunk::get_entities() const {
 	out.resize(static_cast<int64_t>(count));
 	int64_t *w = out.ptrw();
 	for (std::size_t i = 0; i < count; i++) {
-		w[i] = EcsWorld::from_entity((*entities)[start + i]);
+		w[i] = ECSWorld::from_entity((*entities)[start + i]);
 	}
 	return out;
 }
 
-void *const *ECSChunk::column(std::size_t slot, bool write) {
-	ERR_FAIL_COND_V_MSG(world.is_null() || ops == nullptr || slots == nullptr, nullptr, "chunk is not active");
+void *const *ECSChunk::component_ptrs(std::size_t slot, bool write) {
+	ERR_FAIL_COND_V_MSG(world.is_null() || ops == nullptr || components == nullptr, nullptr, "chunk is not active");
 	ERR_FAIL_COND_V_MSG(world->structure_version != version, nullptr, "entities or components were added or removed since this chunk was gathered");
-	ERR_FAIL_COND_V(slot >= slots->size(), nullptr);
+	ERR_FAIL_COND_V(slot >= components->size(), nullptr);
 	ERR_FAIL_COND_V_MSG(write && !ops->writable[slot], nullptr, "this column belongs to a Read component and is read only");
-	return (*slots)[slot].data() + start;
+	return (*components)[slot].data() + start;
 }
 
 void ECSChunk::_bind_methods() {
@@ -65,7 +68,7 @@ void ECSChunk::_bind_methods() {
 //
 bool ECSChunkIterator::begin() {
 	ERR_FAIL_COND_V(world.is_null() || ops == nullptr, false);
-	ops->gather(world->registry, entities, slots);
+	ops->gather(world->registry, entities, components);
 	start = 0;
 	if (entities.empty()) {
 		return false;
@@ -77,7 +80,7 @@ bool ECSChunkIterator::begin() {
 	chunk->ops = ops;
 	chunk->version = world->structure_version;
 	chunk->entities = &entities;
-	chunk->slots = &slots;
+	chunk->components = &components;
 	chunk->start = 0;
 	chunk->count = std::min(chunk_size, entities.size());
 	return true;
@@ -112,15 +115,15 @@ void ECSChunkIterator::_bind_methods() {
 }
 
 //
-// EcsSystem
+// ECSSystem
 //
-int64_t EcsSystem::run_native() {
+int64_t ECSSystem::run_native() {
 	ERR_FAIL_COND_V(world.is_null() || ops == nullptr, 0);
 	ERR_FAIL_NULL_V_MSG(ops->run_native, 0, godot::String(ops->godot_class) + " has no native body");
 	return static_cast<int64_t>(ops->run_native(world->registry));
 }
 
-godot::Ref<ECSChunkIterator> EcsSystem::chunks(int64_t chunk_size) {
+godot::Ref<ECSChunkIterator> ECSSystem::chunks(int64_t chunk_size) {
 	godot::Ref<ECSChunkIterator> it;
 	it.instantiate();
 	it->world = world;
@@ -129,7 +132,7 @@ godot::Ref<ECSChunkIterator> EcsSystem::chunks(int64_t chunk_size) {
 	return it;
 }
 
-int64_t EcsSystem::each_chunk(const godot::Callable &callback, int64_t chunk_size) {
+int64_t ECSSystem::each_chunk(const godot::Callable &callback, int64_t chunk_size) {
 	ERR_FAIL_COND_V_MSG(!callback.is_valid(), 0, "invalid callback");
 	godot::Ref<ECSChunkIterator> it = chunks(chunk_size);
 	int64_t calls = 0;
@@ -140,19 +143,19 @@ int64_t EcsSystem::each_chunk(const godot::Callable &callback, int64_t chunk_siz
 	return calls;
 }
 
-int64_t EcsSystem::count() {
+int64_t ECSSystem::count() {
 	ERR_FAIL_COND_V(world.is_null() || ops == nullptr, 0);
 	std::vector<entt::entity> entities;
-	std::vector<std::vector<void *>> slots;
-	ops->gather(world->registry, entities, slots);
+	std::vector<std::vector<void *>> components;
+	ops->gather(world->registry, entities, components);
 	return static_cast<int64_t>(entities.size());
 }
 
-void EcsSystem::_bind_methods() {
-	godot::ClassDB::bind_method(godot::D_METHOD("run_native"), &EcsSystem::run_native);
-	godot::ClassDB::bind_method(godot::D_METHOD("chunks", "chunk_size"), &EcsSystem::chunks, DEFVAL(1024));
-	godot::ClassDB::bind_method(godot::D_METHOD("each_chunk", "callback", "chunk_size"), &EcsSystem::each_chunk, DEFVAL(1024));
-	godot::ClassDB::bind_method(godot::D_METHOD("count"), &EcsSystem::count);
+void ECSSystem::_bind_methods() {
+	godot::ClassDB::bind_method(godot::D_METHOD("run_native"), &ECSSystem::run_native);
+	godot::ClassDB::bind_method(godot::D_METHOD("chunks", "chunk_size"), &ECSSystem::chunks, DEFVAL(1024));
+	godot::ClassDB::bind_method(godot::D_METHOD("each_chunk", "callback", "chunk_size"), &ECSSystem::each_chunk, DEFVAL(1024));
+	godot::ClassDB::bind_method(godot::D_METHOD("count"), &ECSSystem::count);
 }
 
-} // namespace gdn
+} // namespace GDNativeSDK::ECS
