@@ -28,7 +28,7 @@ const ComponentDesc *find_component(entt::id_type id) {
 
 const ComponentDesc *find_component(const godot::StringName &godot_class) {
 	auto it = components_by_class.find(godot_class);
-	return it == components_by_class.end() ? nullptr : &it->second;
+	return it == components_by_class.end() ? nullptr : it->second;
 }
 
 godot::StringName resolve_class_token(const godot::Variant &token) {

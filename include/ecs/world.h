@@ -132,14 +132,19 @@ void register_component() {
 class ECSWorld;
 class ECSSystem;
 
-// Base of every generated component class. Detached from world it owns a value, attached it resolves the
+// Base of every generated proxy Component class. Detached from world it owns a value, attached it resolves the
 // component in the registry on every access. It never holds a pointer that can go stale.
 class ECSComponent : public godot::RefCounted {
 	GDCLASS(ECSComponent, godot::RefCounted)
 
 public:
+	// The internal instance of a real component struct as an entt::any object.
+	// This value is valid if this ECSComponent is not bound to any ECSWorld, otherwise
+	// The actual valid component is the one inside the ECSWorld's entt::registry
 	entt::any own;
+	// Type Id of the real component struct
 	entt::id_type component = 0;
+
 	godot::Ref<ECSWorld> world;
 	entt::entity entity = entt::null;
 
