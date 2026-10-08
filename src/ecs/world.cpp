@@ -3,40 +3,32 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/error_macros.hpp>
 
-#include <deque>
+#include <unordered_map>
 
 namespace GDNativeSDK::ECS {
 
 namespace {
 // Persistent storage for component descriptors
-// TODO: Convert to std::unordered_map !
-std::deque<ComponentDesc> components;
+std::unordered_map<entt::id_type, ComponentDesc> components_by_id;
+std::unordered_map<godot::StringName, const ComponentDesc *> components_by_class;
 } // namespace
 
 
 
 void add_component_desc(const ComponentDesc &desc) {
-	components.push_back(desc);
+	auto [it, inserted] = components_by_id.emplace(desc.id, desc);
+	ERR_FAIL_COND_MSG(!inserted, "ECS::META: component registered twice");
+	components_by_class[desc.godot_class] = &it->second;
 }
 
 const ComponentDesc *find_component(entt::id_type id) {
-	// TODO: Use a std::map from entt::id_type to the ComponentDesc instead of std::dequeue
-	for (const ComponentDesc &d : components) {
-		if (d.id == id) {
-			return &d;
-		}
-	}
-	return nullptr;
+	auto it = components_by_id.find(id);
+	return it == components_by_id.end() ? nullptr : &it->second;
 }
 
 const ComponentDesc *find_component(const godot::StringName &godot_class) {
-	// TODO: Use a std::map from entt::id_type to the ComponentDesc instead of std::dequeue
-	for (const ComponentDesc &d : components) {
-		if (d.godot_class == godot_class) {
-			return &d;
-		}
-	}
-	return nullptr;
+	auto it = components_by_class.find(godot_class);
+	return it == components_by_class.end() ? nullptr : &it->second;
 }
 
 godot::StringName resolve_class_token(const godot::Variant &token) {
@@ -87,7 +79,7 @@ void ECSComponent::_bind_methods() {
 //
 ECSWorld::ECSWorld() {
 	// Create every storage up front, so looking one up by id never finds nothing.
-	for (const ComponentDesc &d : components) {
+	for (auto &[id, d] : components_by_id) {
 		d.touch(registry);
 	}
 }

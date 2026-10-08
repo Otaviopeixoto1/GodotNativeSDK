@@ -4,31 +4,25 @@
 #include <godot_cpp/core/error_macros.hpp>
 
 #include <algorithm>
-#include <deque>
+#include <unordered_map>
 
 namespace GDNativeSDK::ECS {
 
 namespace {
 // Persistent storage for system descriptors. This is searched every time when querying world for Systems with the GDScript API
-// TODO: Convert to std::unordered_map !
-std::deque<SystemDescriptor> systems;
+std::unordered_map<godot::StringName, SystemDescriptor> systems;
 } // namespace
 
 
 
 void add_system_ops(const SystemDescriptor &ops) {
-	// TODO: Use a std::map from entt::id_type to the SystemDescriptor instead of std::dequeue
-	systems.push_back(ops);
+	auto [it, inserted] = systems.emplace(ops.godot_class, ops);
+	ERR_FAIL_COND_MSG(!inserted, "system registered twice");
 }
 
 const SystemDescriptor *find_system(const godot::StringName &godot_class) {
-	// TODO: Use a std::map from entt::id_type to the SystemDescriptor instead of std::dequeue
-	for (const SystemDescriptor &s : systems) {
-		if (s.godot_class == godot_class) {
-			return &s;
-		}
-	}
-	return nullptr;
+	auto it = systems.find(godot_class);
+	return it == systems.end() ? nullptr : &it->second;
 }
 
 //

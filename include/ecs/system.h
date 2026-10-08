@@ -249,7 +249,7 @@ class ECSChunk : public godot::RefCounted {
 	GDCLASS(ECSChunk, godot::RefCounted)
 
 	//
-	// TODO: FIX LEAKS
+	// TODO: FIX POTENTIAL LEAKS:
 	// Chunks can point at freed memory. ECSChunk::entities and ECSChunk::components are raw pointers into vectors owned by ECSChunkIterator. If GDScript keeps a chunk after
 	// its iterator is freed, the next column access reads freed memory and can crash. That happens if a script stores a chunk from a for loop in a variable, or keeps the chunk passed
 	// to an each_chunk callback. The structure_version check doesn't catch this, because the world itself hasn't changed. Two possible fixes:
