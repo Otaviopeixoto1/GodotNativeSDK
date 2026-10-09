@@ -5,9 +5,11 @@
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/godot.hpp>
 
-#include "example_class.h"
-#include "systems.h"
 #include "register_fixed_types.h"
+
+#include "ecs/ecs.h"
+#include "components.h"
+#include "systems.h"
 
 using namespace godot;
 
@@ -22,15 +24,19 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
 		return;
 	}
 
-	GDREGISTER_CLASS(ExampleClass);
-	//use GDNativeSDK::ECS::register_component<T>(); to register all components
-	//THEN use GDNativeSDK::ECS::register_system<T>(); to register all systems
+	//use GDNativeSDK::ECS::register_component<T>(); to register all components:
+	GDNativeSDK::ECS::register_component<ExampleComponent>();
+	// ...
+	
+
+	//THEN use GDNativeSDK::ECS::register_system<T>(); to register all systems:
+	GDNativeSDK::ECS::register_system<ExampleSystem>();
 }
 
 void uninitialize_gdextension_types(ModuleInitializationLevel p_level)
 {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
-		// Project teardown goes here, before the SDK's.
+		// Project teardown goes here, before the SDK.
 	}
  
 	GDNativeSDK::unregister_fixed_types(p_level);
@@ -38,6 +44,9 @@ void uninitialize_gdextension_types(ModuleInitializationLevel p_level)
 
 extern "C"
 {
+	//
+	// Entry point. Prefer to do all modifications inside the functions above
+	//
 	GDExtensionBool GDE_EXPORT godot_native_sdk_init(GDExtensionInterfaceGetProcAddress p_get_proc_address, GDExtensionClassLibraryPtr p_library, GDExtensionInitialization *r_initialization)
 	{
 		GDExtensionBinding::InitObject init_obj(p_get_proc_address, p_library, r_initialization);

@@ -12,6 +12,8 @@ const CLASS_LIST_PATH := "res://native/native_classes.txt"
 # gdn build exits with this when the SDK needs a variant built and nobody could confirm it.
 const EXIT_CONFIRMATION_REQUIRED := 42
 
+const ECSInspector := preload("ecs/ecs_inspector.gd")
+
 var build_button: Button
 var auto_toggle: CheckButton
 var output_dialog: AcceptDialog
@@ -23,6 +25,7 @@ var build_thread: Thread
 var is_building := false
 var source_mtimes := {}
 var on_confirm := Callable()
+var ecs_inspector
 
 
 func _enter_tree() -> void:
@@ -60,9 +63,14 @@ func _enter_tree() -> void:
 	watch_timer.start()
 
 	source_mtimes = _collect_source_mtimes(SOURCE_DIR)
+	ecs_inspector = ECSInspector.new()
+	ecs_inspector.install(self)
 
 
 func _exit_tree() -> void:
+	if ecs_inspector != null:
+		ecs_inspector.uninstall(self)
+		ecs_inspector = null
 	if build_thread != null and build_thread.is_started():
 		build_thread.wait_to_finish()
 	if build_button:

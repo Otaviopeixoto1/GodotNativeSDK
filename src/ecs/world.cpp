@@ -1,4 +1,5 @@
 #include "ecs/ecs.h"
+#include "ecs/debug/debug_server.h"
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/error_macros.hpp>
@@ -97,11 +98,11 @@ ECSWorld::ECSWorld() {
 	}
 
 	// Makes the world visible to the editor ECS panel when the game runs from the editor.
-	//debug_world_created(this);
+	debug_world_created(this);
 }
 
 ECSWorld::~ECSWorld() {
-	//debug_world_destroyed(this);
+	debug_world_destroyed(this);
 }
 
 int64_t ECSWorld::create() {

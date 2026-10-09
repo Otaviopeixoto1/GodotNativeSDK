@@ -27,6 +27,15 @@
 //			float radius;
 //		};
 //		GDN_COMPONENT(CircleGeometry, GDN_FIELD(center) GDN_FIELD(radius))
+//
+//      //In register_types.cpp:
+// 
+//		void initialize_gdextension_types(ModuleInitializationLevel p_level)
+//		{
+//			...
+//			GDNativeSDK::ECS::register_component<CircleGeometry>()
+//		}
+//
 
 
 

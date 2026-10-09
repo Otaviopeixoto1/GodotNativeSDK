@@ -3,6 +3,7 @@
 #include "ecs/meta_bind.h"
 #include "ecs/system.h"
 #include "ecs/world.h"
+#include "ecs/debug/debug_actions.h"
 
 namespace GDNativeSDK::ECS {
 

@@ -25,8 +25,18 @@
 //		NATIVE_SYSTEM(MoveSystem, GDNativeSDK::ECS::Read<Velocity>, GDNativeSDK::ECS::Write<CircleGeometry>) {
 //			static void body(entt::entity, const Velocity &v, CircleGeometry &c) { c.center += v.value; }
 //		};
+// 
+//      // In register_types.cpp:
+// 
+//		void initialize_gdextension_types(ModuleInitializationLevel p_level)
+//		{
+//			...
+//			// After all dependencies (Components) are registered:
+//			GDNativeSDK::ECS::register_system<MoveSystem>()
+//		}
+
 //
-//		// GDScript:
+//		// In GDScript:
 //
 //		# Iterating through chunks:
 //		var move := world.system(MoveSystem) as MoveSystem

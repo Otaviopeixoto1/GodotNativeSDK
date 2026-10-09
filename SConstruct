@@ -55,6 +55,7 @@ if missing and not GetOption("help"):
 env.Append(CPPPATH=["include/"])
 sources = Glob("src/*.cpp")
 sources += Glob("src/ecs/*.cpp")
+sources += Glob("src/ecs/debug/*.cpp")
 
 # Third party sources, each assumed to be entirely in its own subfolder under thirdparty/.
 env.Append(CPPPATH=["thirdparty/"])
