@@ -59,6 +59,8 @@ func session_started() -> void:
 
 func session_stopped() -> void:
 	connected = false
+	# The values belong to the game that just stopped. The query stays for the next run.
+	_clear_runtime_data()
 	status_changed.emit("The game is not running.")
 
 
@@ -66,19 +68,25 @@ func reset() -> void:
 	components = []
 	component_index = {}
 	actions = PackedStringArray()
+	_rebuild_column_info()
+	schema_changed.emit()
+	query_changed.emit()
+	_clear_runtime_data()
+
+
+# Drops everything that came from a running game: worlds, the current page and the selection.
+func _clear_runtime_data() -> void:
 	world_ids = PackedInt64Array()
 	world_names = PackedStringArray()
 	world_id = -1
 	frame = 0
 	total = 0
+	offset = 0
 	entities = PackedInt64Array()
 	columns = []
 	selected_entity = -1
 	detail = []
-	_rebuild_column_info()
-	schema_changed.emit()
 	worlds_changed.emit()
-	query_changed.emit()
 	rows_changed.emit()
 	detail_changed.emit()
 
