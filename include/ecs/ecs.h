@@ -1,6 +1,5 @@
 #pragma once
 
-
 #include "ecs/meta_bind.h"
 #include "ecs/system.h"
 #include "ecs/world.h"

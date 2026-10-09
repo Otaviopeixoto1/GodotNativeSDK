@@ -31,6 +31,16 @@ const ComponentDesc *find_component(const godot::StringName &godot_class) {
 	return it == components_by_class.end() ? nullptr : it->second;
 }
 
+std::vector<const ComponentDesc *> all_components() {
+	std::vector<const ComponentDesc *> out;
+	for (const auto &[id, desc] : components_by_id) {
+		out.push_back(&desc);
+	}
+	// Sort by unicode order. See: https://docs.godotengine.org/de/4.x/classes/class_string.html#class-string-operator-lt-string
+	std::sort(out.begin(), out.end(), [](const ComponentDesc *a, const ComponentDesc *b) { return godot::String(a->godot_class) < godot::String(b->godot_class); });
+	return out;
+}
+
 godot::StringName resolve_class_token(const godot::Variant &token) {
 	switch (token.get_type()) {
 		case godot::Variant::STRING_NAME:
@@ -40,9 +50,12 @@ godot::StringName resolve_class_token(const godot::Variant &token) {
 			godot::Object *object = token;
 			ERR_FAIL_NULL_V_MSG(object, godot::StringName(), "null component or system");
 			if (godot::Object::cast_to<ECSComponent>(object) || godot::Object::cast_to<ECSSystem>(object)) {
+				// "token" an instance of a component:
 				return object->get_class();
 			}
-			// The class itself, as in world.system(Move): it only offers new(), so ask an instance.
+
+			// "token" is an instance of the a class type. We must instance it first before using get_class
+			// TODO: This is not ideal, try to find a better way to do this since this is the best syntaxe
 			godot::Variant instance = object->call("new");
 			godot::Object *created = instance;
 			ERR_FAIL_NULL_V_MSG(created, godot::StringName(), "not a component or system class");
@@ -82,6 +95,13 @@ ECSWorld::ECSWorld() {
 	for (auto &[id, d] : components_by_id) {
 		d.touch(registry);
 	}
+
+	// Makes the world visible to the editor ECS panel when the game runs from the editor.
+	//debug_world_created(this);
+}
+
+ECSWorld::~ECSWorld() {
+	//debug_world_destroyed(this);
 }
 
 int64_t ECSWorld::create() {
@@ -152,14 +172,6 @@ void ECSWorld::_bind_methods() {
 	godot::ClassDB::bind_method(godot::D_METHOD("has", "entity", "component"), &ECSWorld::has);
 	godot::ClassDB::bind_method(godot::D_METHOD("component", "entity", "component"), &ECSWorld::component);
 	godot::ClassDB::bind_method(godot::D_METHOD("system", "system"), &ECSWorld::system);
-}
-
-void register_ecs_types() {
-	GDREGISTER_ABSTRACT_CLASS(ECSComponent);
-	GDREGISTER_ABSTRACT_CLASS(ECSChunk);
-	GDREGISTER_ABSTRACT_CLASS(ECSSystem);
-	GDREGISTER_CLASS(ECSChunkIterator);
-	GDREGISTER_CLASS(ECSWorld);
 }
 
 } // namespace GDNativeSDK::ECS

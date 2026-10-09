@@ -8,7 +8,7 @@
 namespace GDNativeSDK::ECS {
 
 namespace {
-// The C API takes pointers to names. We must keep every names alive for the lifetime of the library...
+// The C API takes pointers to names. We must keep every string alive for the lifetime of the library...
 std::deque<godot::StringName> names;
 std::deque<godot::String> strings;
 
@@ -98,11 +98,11 @@ void bind_value_properties(const godot::StringName &godot_class, const entt::met
 }
 
 void bind_column_properties(const godot::StringName &chunk_class, const entt::meta_type &type, const godot::String &prefix, std::size_t slot, bool writable) {
-	// The slot travels as the method user data, so one set of functions serves every system.
+	// The "slot" is packed as the "method_userdata" value.
 	void *userdata = reinterpret_cast<void *>(static_cast<uintptr_t>(slot));
 	for (auto [id, data] : type.data()) {
 		const FieldOps *ops = data.custom();
-		ERR_CONTINUE_MSG(ops == nullptr, "field reflected without gdn::reflect");
+		ERR_CONTINUE_MSG(ops == nullptr, "field reflected without GDNativeSDK::ECS::reflect");
 		godot::String column = prefix + godot::String("_") + to_string(data.name());
 		godot::StringName &prop = keep(column);
 		godot::StringName &getter = keep("get_" + column);

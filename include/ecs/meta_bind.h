@@ -134,6 +134,11 @@ struct FieldOps {
 	GDExtensionClassMethodPtrCall value_set_ptr;
 	GDExtensionClassMethodPtrCall column_get_ptr;
 	GDExtensionClassMethodPtrCall column_set_ptr;
+
+	// Plain accessors for a component pointer. Used by code that only has access to the field (e.g. the ECS debugger).
+	godot::Variant (*get)(const void *component);
+	bool (*set)(void *component, const godot::Variant &value);
+	godot::Variant (*pack_column)(void *const *components, std::size_t count);
 };
 
 template <auto Member>
@@ -146,33 +151,9 @@ struct FieldThunks {
 	static void copy_out(const godot::Variant &v, GDExtensionVariantPtr r_ret) { godot::internal::gdextension_interface_variant_new_copy(r_ret, v._native_ptr()); }
 	static C *comp(GDExtensionClassInstancePtr inst) { return static_cast<C *>(proxy_data(inst)); }
 
-	// Single value on a component proxy.
-	static void value_get_call(void *, GDExtensionClassInstancePtr inst, const GDExtensionConstVariantPtr *, GDExtensionInt, GDExtensionVariantPtr r_ret, GDExtensionCallError *err) {
-		C *c = comp(inst);
-		copy_out(c ? godot::Variant(c->*Member) : godot::Variant(), r_ret);
-		ok(err);
-	}
-	static void value_set_call(void *, GDExtensionClassInstancePtr inst, const GDExtensionConstVariantPtr *args, GDExtensionInt argc, GDExtensionVariantPtr, GDExtensionCallError *err) {
-		if (argc < 1) {
-			err->error = GDEXTENSION_CALL_ERROR_TOO_FEW_ARGUMENTS;
-			err->expected = 1;
-			return;
-		}
-		if (C *c = comp(inst)) {
-			c->*Member = static_cast<F>(*reinterpret_cast<const godot::Variant *>(args[0]));
-		}
-		ok(err);
-	}
-	static void value_get_ptr(void *, GDExtensionClassInstancePtr inst, const GDExtensionConstTypePtr *, GDExtensionTypePtr r_ret) {
-		C *c = comp(inst);
-		godot::PtrToArg<F>::encode(c ? c->*Member : F{}, r_ret);
-	}
-	static void value_set_ptr(void *, GDExtensionClassInstancePtr inst, const GDExtensionConstTypePtr *args, GDExtensionTypePtr) {
-		if (C *c = comp(inst)) {
-			c->*Member = godot::PtrToArg<F>::convert(args[0]);
-		}
-	}
-
+	//
+	// Column Data Packing
+	//
 	static Col pack(void *const *p, std::size_t n) {
 		Col out;
 		out.resize(static_cast<int64_t>(n));
@@ -205,6 +186,35 @@ struct FieldThunks {
 				static_cast<C *>(p[i])->*Member = static_cast<F>(in[static_cast<int64_t>(i)]);
 		}
 	}
+
+	//
+	// Required ClassDB single value and column accessors
+	//
+	static void value_get_call(void *, GDExtensionClassInstancePtr inst, const GDExtensionConstVariantPtr *, GDExtensionInt, GDExtensionVariantPtr r_ret, GDExtensionCallError *err) {
+		C *c = comp(inst);
+		copy_out(c ? godot::Variant(c->*Member) : godot::Variant(), r_ret);
+		ok(err);
+	}
+	static void value_set_call(void *, GDExtensionClassInstancePtr inst, const GDExtensionConstVariantPtr *args, GDExtensionInt argc, GDExtensionVariantPtr, GDExtensionCallError *err) {
+		if (argc < 1) {
+			err->error = GDEXTENSION_CALL_ERROR_TOO_FEW_ARGUMENTS;
+			err->expected = 1;
+			return;
+		}
+		if (C *c = comp(inst)) {
+			c->*Member = static_cast<F>(*reinterpret_cast<const godot::Variant *>(args[0]));
+		}
+		ok(err);
+	}
+	static void value_get_ptr(void *, GDExtensionClassInstancePtr inst, const GDExtensionConstTypePtr *, GDExtensionTypePtr r_ret) {
+		C *c = comp(inst);
+		godot::PtrToArg<F>::encode(c ? c->*Member : F{}, r_ret);
+	}
+	static void value_set_ptr(void *, GDExtensionClassInstancePtr inst, const GDExtensionConstTypePtr *args, GDExtensionTypePtr) {
+		if (C *c = comp(inst)) {
+			c->*Member = godot::PtrToArg<F>::convert(args[0]);
+		}
+	}
 	static void column_get_call(void *ud, GDExtensionClassInstancePtr inst, const GDExtensionConstVariantPtr *, GDExtensionInt, GDExtensionVariantPtr r_ret, GDExtensionCallError *err) {
 		std::size_t n = 0;
 		void *const *p = chunk_component_ptrs(inst, ud, n, false);
@@ -235,6 +245,23 @@ struct FieldThunks {
 		}
 	}
 
+	//
+	// Plain accessors 
+	//
+	static godot::Variant get(const void *c) {
+		return godot::Variant(static_cast<const C *>(c)->*Member);
+	}
+	static bool set(void *c, const godot::Variant &v) {
+		if (!godot::Variant::can_convert(v.get_type(), static_cast<godot::Variant::Type>(godot::GetTypeInfo<F>::VARIANT_TYPE))) {
+			return false;
+		}
+		static_cast<C *>(c)->*Member = static_cast<F>(v);
+		return true;
+	}
+	static godot::Variant pack_column(void *const *p, std::size_t n) {
+		return godot::Variant(pack(p, n));
+	}
+
 	static FieldOps make() {
 		return {
 			static_cast<GDExtensionVariantType>(godot::GetTypeInfo<F>::VARIANT_TYPE),
@@ -248,6 +275,9 @@ struct FieldThunks {
 			&value_set_ptr,
 			&column_get_ptr,
 			&column_set_ptr,
+			&get,
+			&set,
+			&pack_column,
 		};
 	}
 };

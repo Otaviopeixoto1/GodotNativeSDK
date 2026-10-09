@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 //
 // Macros
@@ -94,8 +95,13 @@ void add_component_desc(const ComponentDesc &desc);
 const ComponentDesc *find_component(entt::id_type id);
 const ComponentDesc *find_component(const godot::StringName &godot_class);
 
+// Return every registered component
+std::vector<const ComponentDesc *> all_components();
+
 // What GDScript passes to name a component or system: the class itself, an instance, or a name.
 godot::StringName resolve_class_token(const godot::Variant &token);
+
+
 
 // Called at during type registration (MODULE_INITIALIZATION_LEVEL_SCENE), before regustering systems that use the component.
 template <typename T>
@@ -169,6 +175,7 @@ public:
 	uint64_t structure_version = 0;
 
 	ECSWorld();
+	~ECSWorld();
 
 	// Creates an entity managed by this ECSWorld
 	int64_t create();
