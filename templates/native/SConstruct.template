@@ -127,8 +127,9 @@ for library_path in built["libraries"]:
 env.Append(CPPPATH=[os.path.abspath("."), os.path.abspath("src")])
 
 # Compile into build/obj (ignored folder) instead of beside the sources. This solves the windows issue where godot tried to import .obj build artifacts
+# Sources are collected recursively, so subfolders of src/ are built too. Object files mirror the src/ layout under build/obj.
 env.VariantDir("build/obj", "src", duplicate=False)
-sources = Glob("build/obj/*.cpp")
+sources = scons_support.collect_sources("src", variant_dir="build/obj")
 
 # .dev and .universal do not affect compatibility, and the .gdextension template names files without them.
 final_suffix = env["suffix"].replace(".dev", "").replace(".universal", "")

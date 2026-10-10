@@ -20,6 +20,7 @@ from . import manifest as mf
 # godot-cpp hardcodes C++17. EnTT needs C++20, so the SDK and every project needs to replace that flag.
 CXX_STANDARD = "20"
 STANDARD_FLAG = re.compile(r"^(-std=(?:c|gnu)\+\+|/std:c\+\+)(\w+)$")
+SOURCE_EXTENSIONS = (".c", ".cc", ".cpp", ".cxx")
 
 
 @contextlib.contextmanager
@@ -193,3 +194,48 @@ def atomic_install(target, source, env):
     shutil.copy2(str(source[0]), temp)
     os.replace(temp, destination)
     return 0
+
+# This function must not be used by the CLI. Only inside SCons
+def collect_sources(src_dir, variant_dir=None, exclude_dirs=(), extensions=SOURCE_EXTENSIONS):
+    """
+    Recursively collects the C/C++ sources under src_dir as SCons File nodes.
+
+    src_dir       Folder to scan, relative to the calling SConstruct (or absolute).
+    variant_dir   When set, each source is returned under this folder instead, keeping its relative
+                  path (src/ecs/world.cpp -> <variant_dir>/ecs/world.cpp). The caller must have declared
+                  env.VariantDir(variant_dir, src_dir, ...) so SCons maps it back to the real file.
+    exclude_dirs  Folders to skip. A plain name ("gen") is skipped at any depth. A relative path
+                  ("thirdparty/foo") is skipped only at that location under src_dir.
+                  Folders starting with "." are always skipped.
+    extensions    File extensions to compile, matched case-insensitively.
+
+    The result is sorted so the build order is the same on every machine.
+    """
+    # Imported here, not at module level: this module may also be loaded outside SCons (e.g. by the gdn CLI)
+    from SCons.Script import Dir, File
+
+    src_root = Dir(src_dir).srcnode().abspath
+    if not os.path.isdir(src_root):
+        return []
+
+    excluded = {os.path.normpath(d) for d in exclude_dirs}
+    base = variant_dir if variant_dir else src_dir
+    found = []
+
+    for dirpath, dirnames, filenames in os.walk(src_root):
+        rel_dir = os.path.relpath(dirpath, src_root)
+
+        # Editing dirnames in place controls which folders os.walk goes into
+        kept = []
+        for name in dirnames:
+            rel_path = os.path.normpath(os.path.join(rel_dir, name))
+            if name.startswith(".") or name in excluded or rel_path in excluded:
+                continue
+            kept.append(name)
+        dirnames[:] = sorted(kept)
+
+        for name in sorted(filenames):
+            if name.lower().endswith(extensions):
+                found.append(File(os.path.normpath(os.path.join(base, rel_dir, name))))
+
+    return found
