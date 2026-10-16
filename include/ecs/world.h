@@ -78,6 +78,7 @@ namespace GDNativeSDK::ECS {
 // Templates
 //
 
+// Specialized by GDN_COMPONENT macro. Not defined for other classes.
 template <typename T>
 struct component_traits;
 

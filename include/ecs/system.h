@@ -87,6 +87,7 @@ namespace GDNativeSDK::ECS {
 // Templates
 //
 
+// Specialized by NATIVE_SYSTEM macro. Not defined for other classes.
 template <typename S>
 struct system_traits;
 
