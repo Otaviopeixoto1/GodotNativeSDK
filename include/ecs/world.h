@@ -61,7 +61,7 @@
 	struct component_traits<::m_type> {                                 \
 		using proxy = ::GDNativeSDK::ECSProxies::m_type;                \
 		static void reflect() {                                         \
-			using Self = ::m_type;                                      \
+			using Self [[maybe_unused]] = ::m_type;                     \
 			::GDNativeSDK::ECS::reflect<::m_type>(#m_type) m_fields;    \
 		}                                                               \
 	};                                                                  \
